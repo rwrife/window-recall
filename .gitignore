@@ -1,0 +1,18 @@
+# .NET
+bin/
+obj/
+TestResults/
+*.user
+*.suo
+
+# IDE / OS
+.vs/
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Local Window Recall data and packages
+artifacts/
+profiles-local/
+*.local.json
