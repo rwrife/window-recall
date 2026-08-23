@@ -2,7 +2,7 @@
 
 **Window Recall is a local-first desktop utility for Windows 10/11 and macOS that saves named window layouts and restores apps after monitor, dock, or workspace changes.**
 
-> Status: design and issue backlog only. No working application or packaged release exists yet.
+> Status: milestone-one development foundation. The .NET 8 solution, schema-v1 local profile storage, Avalonia shell, CLI shell, and platform adapter seams build and are tested. Live Windows/macOS capture and restore are not implemented, and no packaged release exists yet.
 
 ## Overview
 
@@ -107,20 +107,21 @@ Progress is tracked in [GitHub Issues](https://github.com/rwrife/window-recall/i
 
 ## Development quickstart
 
-The repository currently contains documentation only. The planned implementation uses .NET 8, C#, Avalonia, and xUnit.
-
-Once the project skeleton lands:
+Install the .NET 8 SDK pinned by `global.json`, then:
 
 ```bash
 git clone https://github.com/rwrife/window-recall.git
 cd window-recall
 dotnet restore
+dotnet format --verify-no-changes
 dotnet build --configuration Release
 dotnet test --configuration Release
 ```
 
-Platform integration tests must run on their matching OS. Do not treat mocked adapter tests as proof that real windows were moved correctly.
+Run the development shell with `dotnet run --project src/WindowRecall.App` or the CLI foundation with `dotnet run --project src/WindowRecall.Cli`. Profiles use the documented [schema v1](docs/profile-schema.md), remain local JSON, and omit raw window titles unless explicitly opted in.
+
+The current Windows and macOS tests cover compile-time adapter seams and capability reporting only. Platform integration tests must run on their matching OS after native adapters exist; these tests are not proof that real windows were observed or moved.
 
 ## License
 
-Planned as an MIT-licensed open-source project; the license file will be added with the implementation skeleton.
+Window Recall is licensed under the MIT License; see [LICENSE](LICENSE).

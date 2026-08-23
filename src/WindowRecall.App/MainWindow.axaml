@@ -1,0 +1,10 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="WindowRecall.App.MainWindow"
+        Title="Window Recall" Width="720" Height="480">
+  <StackPanel Margin="32" Spacing="12">
+    <TextBlock FontSize="28" FontWeight="SemiBold">Window Recall</TextBlock>
+    <TextBlock TextWrapping="Wrap">The local profile foundation is ready. Capture and restore integration arrives in later milestones.</TextBlock>
+    <TextBlock TextWrapping="Wrap">No windows will move without a restore preview and explicit approval.</TextBlock>
+  </StackPanel>
+</Window>
