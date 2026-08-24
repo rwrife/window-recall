@@ -2,7 +2,7 @@
 
 **Window Recall is a local-first desktop utility for Windows 10/11 and macOS that saves named window layouts and restores apps after monitor, dock, or workspace changes.**
 
-> Status: milestone-one development foundation. The .NET 8 solution, schema-v1 local profile storage, Avalonia shell, CLI shell, and platform adapter seams build and are tested. Live Windows/macOS capture and restore are not implemented, and no packaged release exists yet.
+> Status: the Windows one-monitor capture/restore vertical slice is implemented with deterministic mock coverage and an opt-in live desktop fixture harness. Capture remains useful with multiple monitors, but bounds-changing apply safely reports `Unsupported` unless exactly one valid monitor is attached; state-only apply is still available. Cross-monitor restore awaits topology mapping. Live Windows evidence has not yet been recorded; macOS capture/restore and packaging remain unimplemented.
 
 ## Overview
 
@@ -120,7 +120,7 @@ dotnet test --configuration Release
 
 Run the development shell with `dotnet run --project src/WindowRecall.App` or the CLI foundation with `dotnet run --project src/WindowRecall.Cli`. Profiles use the documented [schema v1](docs/profile-schema.md), remain local JSON, and omit raw window titles unless explicitly opted in.
 
-The current Windows and macOS tests cover compile-time adapter seams and capability reporting only. Platform integration tests must run on their matching OS after native adapters exist; these tests are not proof that real windows were observed or moved.
+Windows adapter tests use an injected fake native API and are not proof that real windows were observed or moved. See [Windows adapter verification](docs/windows-adapter-verification.md) for filtering rules, the live fixture command, and the latest clearly separated mock/build/live evidence. macOS tests still cover the adapter seam only.
 
 ## License
 
