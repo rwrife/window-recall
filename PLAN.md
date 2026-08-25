@@ -50,7 +50,7 @@ Core services:
 
 **Windows:** P/Invoke wrappers around `EnumWindows`, process metadata, monitor APIs, DPI-aware coordinates, `GetWindowPlacement`, `ShowWindowAsync`, and `SetWindowPos`. Tool windows, cloaked windows, protected processes, and non-user windows are filtered conservatively.
 
-**macOS:** CoreGraphics provides display/window observations; Accessibility (`AXUIElement`) provides authorized position/size operations and app identity. Permission state is surfaced as a first-class result. Unsupported/full-screen/system windows are skipped rather than coerced.
+**macOS:** CoreGraphics provides display/window observations; authorized Accessibility (`AXUIElement`) provides state inspection and position/size operations. Bundle identifier and executable URL provide app identity. Permission state is surfaced through capabilities and a UI-facing onboarding contract; capture remains conservatively useful from CoreGraphics metadata without permission. Unsupported/full-screen/system/modal/hidden windows are reported with restore-skip reasons rather than coerced. Native window IDs and AX objects never leave the platform assembly; platform display IDs remain stable display-mapping hints.
 
 ### UI and CLI
 
