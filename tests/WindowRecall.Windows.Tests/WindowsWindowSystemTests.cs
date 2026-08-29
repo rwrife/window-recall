@@ -58,6 +58,19 @@ public sealed class WindowsWindowSystemTests
     }
 
     [Fact]
+    public async Task Capture_IgnoresDuplicateNativeWindowHandlesAndKeepsStableOpaqueIdentity()
+    {
+        FakeNativeApi native = OneWindowDesktop();
+        native.WindowEnumeration = [10, 10];
+        WindowsWindowSystem system = new(native);
+
+        string first = Assert.Single((await system.CaptureAsync()).Windows).WindowId;
+        string second = Assert.Single((await system.CaptureAsync()).Windows).WindowId;
+
+        Assert.Equal(first, second);
+    }
+
+    [Fact]
     public async Task Capture_MixedDpiCoordinatesScaleRelativeToMonitorOrigin()
     {
         FakeNativeApi native = new()
@@ -140,7 +153,7 @@ public sealed class WindowsWindowSystemTests
     }
 
     [Fact]
-    public async Task Apply_BoundsChangeWithMultipleValidMonitors_IsUnsupported_ButStateOnlyIsAllowed()
+    public async Task Apply_BoundsChangeWithMultipleValidMonitors_SelectsTargetMonitor()
     {
         FakeNativeApi native = OneWindowDesktop();
         native.Monitors =
@@ -151,14 +164,14 @@ public sealed class WindowsWindowSystemTests
         WindowsWindowSystem system = new(native);
         WindowSnapshot current = Assert.Single((await system.CaptureAsync()).Windows);
         RestorePlan plan = Plan(
-            new RestorePlanItem("move", current.WindowId, RestoreAction.MoveResize, new(20, 30, 400, 300), null, "preview"),
+            new RestorePlanItem("move", current.WindowId, RestoreAction.MoveResize, new(3900, 30, 400, 300), null, "preview"),
             new RestorePlanItem("state", current.WindowId, RestoreAction.ChangeState, null, WindowState.Maximized, "preview"));
 
         ImmutableArray<WindowOutcome> outcomes = await system.ApplyAsync(plan, ["move", "state"]);
 
-        Assert.Equal(WindowOutcomeCode.Unsupported, outcomes[0].Code);
+        Assert.Equal(WindowOutcomeCode.Succeeded, outcomes[0].Code);
         Assert.Equal(WindowOutcomeCode.Succeeded, outcomes[1].Code);
-        Assert.Empty(native.PositionCalls);
+        Assert.Equal(new NativeRect(3900, 30, 400, 300), Assert.Single(native.PositionCalls).Bounds);
         Assert.Single(native.ShowCalls);
     }
 
@@ -273,12 +286,14 @@ public sealed class WindowsWindowSystemTests
     }
 
     [Fact]
-    public async Task Capabilities_DiscloseOneMonitorBoundsApplyLimitation()
+    public async Task Capabilities_DiscloseTopologyBoundsSupportAndLaunchLimitation()
     {
         WindowSystemCapabilities capabilities = await new WindowsWindowSystem(OneWindowDesktop()).GetCapabilitiesAsync();
 
-        Assert.Contains("one", capabilities.Limitation, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("monitor", capabilities.Limitation, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("launch", capabilities.Limitation, StringComparison.OrdinalIgnoreCase);
+        Assert.True(capabilities.CanMoveResize);
+        Assert.False(capabilities.CanLaunch);
     }
 
     [Fact]
@@ -310,6 +325,21 @@ public sealed class WindowsWindowSystemTests
 
         Assert.Equal(WindowOutcomeCode.Cancelled, outcome.Code);
         Assert.Empty(native.PositionCalls);
+    }
+
+    [Fact]
+    public async Task Coordinator_PreApplyRecapturePreservesOpaqueSessionIdentity()
+    {
+        FakeNativeApi native = OneWindowDesktop();
+        WindowsWindowSystem system = new(native);
+        WindowSnapshot current = Assert.Single((await system.CaptureAsync()).Windows);
+        RestorePlan plan = Plan(new RestorePlanItem("saved", current.WindowId, RestoreAction.MoveResize,
+            new(10, 20, 200, 100), WindowState.Normal, "preview", true));
+
+        UndoReceipt receipt = await new RestoreCoordinator(system).ApplyAsync(plan);
+
+        Assert.Equal(WindowOutcomeCode.Succeeded, Assert.Single(receipt.Outcomes).Code);
+        Assert.Equal(current.WindowId, Assert.Single(receipt.BeforeRestore.Windows).WindowId);
     }
 
     [Fact]
@@ -484,6 +514,7 @@ public sealed class WindowsWindowSystemTests
         public bool IsSupported { get; set; } = true;
         public nint ShellWindow { get; set; }
         public IReadOnlyList<NativeMonitorInfo> Monitors { get; set; } = [];
+        public IReadOnlyList<nint>? WindowEnumeration { get; set; }
         public NativeRect? AfterPosition { get; set; }
         public List<(nint Handle, NativeRect Bounds)> PositionCalls { get; } = [];
         public List<(nint Handle, NativeWindowState State)> ShowCalls { get; } = [];
@@ -499,7 +530,8 @@ public sealed class WindowsWindowSystemTests
 
         public void AddWindow(nint handle, NativeWindowInfo window) => windows[handle] = NativeResult<NativeWindowInfo>.Success(window);
         public void AddWindow(nint handle, NativeResult<NativeWindowInfo> result) => windows[handle] = result;
-        public NativeResult<IReadOnlyList<nint>> EnumerateTopLevelWindows() => NativeResult<IReadOnlyList<nint>>.Success(windows.Keys.ToArray());
+        public NativeResult<IReadOnlyList<nint>> EnumerateTopLevelWindows() =>
+            NativeResult<IReadOnlyList<nint>>.Success(WindowEnumeration ?? windows.Keys.ToArray());
         public NativeResult<IReadOnlyList<NativeMonitorInfo>> EnumerateMonitors() => NativeResult<IReadOnlyList<NativeMonitorInfo>>.Success(Monitors);
         public NativeResult<nint> GetShellWindow() => NativeResult<nint>.Success(ShellWindow);
         public NativeResult<NativeWindowInfo> ObserveWindow(nint handle)
