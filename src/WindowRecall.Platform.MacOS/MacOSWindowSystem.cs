@@ -49,8 +49,10 @@ public sealed class MacOSWindowSystem : IWindowSystem
         ImmutableArray<MacOSWindowObservation> observedWindows = native.ObserveWindows(trusted);
         cancellationToken.ThrowIfCancellationRequested();
 
+        ImmutableDictionary<string, CapturedWindow> previousSession = Volatile.Read(ref capturedWindows);
         ImmutableDictionary<string, CapturedWindow>.Builder nextSession =
             ImmutableDictionary.CreateBuilder<string, CapturedWindow>(StringComparer.Ordinal);
+        HashSet<MacOSWindowIdentity> seenIdentities = [];
         ImmutableArray<WindowSnapshot>.Builder windows = ImmutableArray.CreateBuilder<WindowSnapshot>();
         foreach (MacOSWindowObservation window in observedWindows)
         {
@@ -60,12 +62,21 @@ public sealed class MacOSWindowSystem : IWindowSystem
                 continue;
             }
 
-            string sessionId = $"window-{Guid.NewGuid():N}";
-            nextSession.Add(sessionId, new CapturedWindow(new MacOSWindowIdentity(
+            MacOSWindowIdentity identity = new(
                 window.WindowId,
                 window.OwnerPid,
                 window.BundleIdentifier!,
-                window.ExecutableUrl!)));
+                window.ExecutableUrl!);
+            if (!seenIdentities.Add(identity))
+            {
+                continue;
+            }
+
+            string sessionId = previousSession
+                .Where(pair => pair.Value.Identity == identity)
+                .Select(pair => pair.Key)
+                .FirstOrDefault() ?? $"window-{Guid.NewGuid():N}";
+            nextSession.Add(sessionId, new CapturedWindow(identity));
             windows.Add(ToSnapshot(window, sessionId, GetRestoreLimitation(window, trusted)));
         }
 

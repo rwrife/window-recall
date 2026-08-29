@@ -7,7 +7,7 @@ namespace WindowRecall.MacOS.Tests;
 public sealed class MacOSWindowSystemTests
 {
     [Fact]
-    public async Task Capture_UsesRandomOpaqueIds_ThatDoNotExposeNativeWindowIds()
+    public async Task Capture_UsesStableRandomOpaqueIds_ThatDoNotExposeNativeWindowIds()
     {
         FakeMacOSNativeApi native = TrustedWindowApi();
         MacOSWindowSystem system = new(native);
@@ -17,7 +17,7 @@ public sealed class MacOSWindowSystemTests
 
         Assert.StartsWith("window-", first, StringComparison.Ordinal);
         Assert.NotEqual("cg:10", first);
-        Assert.NotEqual(first, second);
+        Assert.Equal(first, second);
     }
 
     [Fact]

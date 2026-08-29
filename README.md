@@ -2,7 +2,7 @@
 
 **Window Recall is a local-first desktop utility for Windows 10/11 and macOS that saves named window layouts and restores apps after monitor, dock, or workspace changes.**
 
-> Status: Windows and macOS adapter vertical slices are implemented with deterministic fake-native coverage and opt-in live fixture harnesses. macOS capture remains read-only without Accessibility permission and explicitly reports that limitation; authorized AX mutation is re-observed before success. Cross-monitor topology mapping and packaging remain future work. Live Windows and macOS evidence has not yet been recorded.
+> Status: deterministic matching, display-topology mapping, safe immutable previews, selective coordination, and one-step best-effort undo are implemented in Core. Windows and macOS adapter vertical slices have deterministic fake-native coverage and opt-in live fixture harnesses; Windows consumes topology-planned multi-monitor bounds, while macOS remains read-only without Accessibility permission and re-observes authorized AX mutations. Live Windows and macOS evidence has not yet been recorded, and packaging remains future work.
 
 ## Overview
 
@@ -121,6 +121,8 @@ dotnet test --configuration Release
 Run the development shell with `dotnet run --project src/WindowRecall.App` or the CLI foundation with `dotnet run --project src/WindowRecall.Cli`. Profiles use the documented [schema v1](docs/profile-schema.md), remain local JSON, and omit raw window titles unless explicitly opted in.
 
 Platform adapter tests use injected fake native APIs and are not proof that real windows were observed or moved. See [Windows adapter verification](docs/windows-adapter-verification.md) and [macOS adapter verification](docs/macos-adapter-verification.md) for filtering rules, permission behavior, live harness instructions, and clearly separated mock/build/live evidence.
+
+See [Restore engine guarantees](docs/restore-engine.md) for the matching evidence tiers, topology score inputs, normalized clamping invariant, preview selection rules, and undo limitations.
 
 ## License
 

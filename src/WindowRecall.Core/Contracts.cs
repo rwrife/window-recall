@@ -39,3 +39,10 @@ public interface IRestorePlanner
 {
     Task<RestorePlan> CreatePlanAsync(LayoutProfile profile, CurrentDesktop currentDesktop, CancellationToken cancellationToken = default);
 }
+
+/// <summary>Executes selected preview items and owns the single available undo step.</summary>
+public interface IRestoreCoordinator
+{
+    Task<UndoReceipt> ApplyAsync(RestorePlan plan, CancellationToken cancellationToken = default);
+    Task<ImmutableArray<WindowOutcome>> UndoAsync(UndoReceipt receipt, CancellationToken cancellationToken = default);
+}
