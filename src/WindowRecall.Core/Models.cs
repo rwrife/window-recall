@@ -69,8 +69,35 @@ public sealed record CurrentDesktop(
     ImmutableArray<DisplaySnapshot> Displays,
     ImmutableArray<WindowSnapshot> Windows);
 
+/// <summary>Evidence strength, ordered from weakest to strongest.</summary>
+public enum MatchEvidenceTier { None, TitleHint, ApplicationAndStructure, StableApplicationIdentity, ExactSessionIdentity }
+
 /// <summary>Evidence for a possible saved-to-current window match.</summary>
-public sealed record MatchCandidate(string SavedWindowId, string CurrentWindowId, double Confidence, ImmutableArray<string> Evidence);
+public sealed record MatchCandidate(
+    string SavedWindowId,
+    string CurrentWindowId,
+    double Confidence,
+    ImmutableArray<string> Evidence,
+    int Rank = 0,
+    MatchEvidenceTier Tier = MatchEvidenceTier.None,
+    bool IsAmbiguous = false);
+
+/// <summary>The deterministic resolution state for one saved window.</summary>
+public enum WindowMatchStatus { Matched, Ambiguous, Unmatched }
+
+/// <summary>A resolved match plus its ranked evidence. Ambiguous matches never identify a selected current window.</summary>
+public sealed record WindowMatch(
+    string SavedWindowId,
+    string? CurrentWindowId,
+    WindowMatchStatus Status,
+    ImmutableArray<MatchCandidate> Candidates,
+    string Reason);
+
+/// <summary>How a saved display was associated with an attached display.</summary>
+public enum DisplayMappingKind { StableHint, Topology, PrimaryFallback }
+
+/// <summary>A reasoned saved-to-current display association.</summary>
+public sealed record DisplayMapping(string SavedDisplayId, string CurrentDisplayId, DisplayMappingKind Kind, double Score, string Reason);
 
 /// <summary>The action represented by a restore-plan item.</summary>
 public enum RestoreAction { MoveResize, ChangeState, Launch, Skip, Ambiguous }
@@ -82,7 +109,8 @@ public sealed record RestorePlanItem(
     RestoreAction Action,
     DesktopRect? TargetBounds,
     WindowState? TargetState,
-    string Reason)
+    string Reason,
+    bool IsIncluded = true)
 {
     /// <summary>Only deterministic operations on an existing window may be selected automatically.</summary>
     public bool CanAutoApply =>
@@ -90,7 +118,23 @@ public sealed record RestorePlanItem(
 }
 
 /// <summary>A preview that must be approved before execution and captures the desktop needed for undo.</summary>
-public sealed record RestorePlan(Guid PlanId, ImmutableArray<RestorePlanItem> Items, CurrentDesktop UndoSnapshot);
+public sealed record RestorePlan(Guid PlanId, ImmutableArray<RestorePlanItem> Items, CurrentDesktop UndoSnapshot)
+{
+    /// <summary>Returns a new preview with only requested safe items selected. Launches require a separate opt-in.</summary>
+    public RestorePlan WithSelection(IEnumerable<string> savedWindowIds, bool includeLaunches = false)
+    {
+        ArgumentNullException.ThrowIfNull(savedWindowIds);
+        HashSet<string> selected = savedWindowIds.ToHashSet(StringComparer.Ordinal);
+        return this with
+        {
+            Items = Items.Select(item => item with
+            {
+                IsIncluded = selected.Contains(item.SavedWindowId) &&
+                    (item.CanAutoApply || (includeLaunches && item.Action is RestoreAction.Launch)),
+            }).ToImmutableArray(),
+        };
+    }
+}
 
 /// <summary>A structured capability or execution status for one window.</summary>
 public enum WindowOutcomeCode { Succeeded, Skipped, Cancelled, NotFound, Ambiguous, PermissionDenied, Unsupported, Failed }

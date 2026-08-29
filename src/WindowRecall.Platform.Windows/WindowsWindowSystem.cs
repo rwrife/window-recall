@@ -25,13 +25,14 @@ public sealed class WindowsWindowSystem : IWindowSystem
         IReadOnlyList<nint> enumerated = Require(native.EnumerateTopLevelWindows(), "window enumeration");
         NativeResult<nint> shellResult = native.GetShellWindow();
         nint shell = shellResult.IsSuccess ? shellResult.Value : 0;
+        ImmutableDictionary<string, CapturedWindow> previousCapturedWindows = Volatile.Read(ref capturedWindows);
         ImmutableDictionary<string, CapturedWindow>.Builder newCapturedWindows =
             ImmutableDictionary.CreateBuilder<string, CapturedWindow>(StringComparer.Ordinal);
 
         ImmutableArray<DisplaySnapshot> displays = monitors.Select(ToDisplay).ToImmutableArray();
         Dictionary<long, NativeMonitorInfo> monitorById = monitors.ToDictionary(m => m.Id);
         ImmutableArray<WindowSnapshot>.Builder windows = ImmutableArray.CreateBuilder<WindowSnapshot>();
-        foreach (nint handle in enumerated)
+        foreach (nint handle in enumerated.Distinct())
         {
             cancellationToken.ThrowIfCancellationRequested();
             if (handle == 0 || handle == shell)
@@ -42,7 +43,12 @@ public sealed class WindowsWindowSystem : IWindowSystem
             if (!monitorById.TryGetValue(info.MonitorId, out NativeMonitorInfo? monitor) || monitor.Dpi is 0)
                 continue;
 
-            string id = $"window-{Guid.NewGuid():N}";
+            string id = previousCapturedWindows
+                .Where(pair => pair.Value.Handle == handle && pair.Value.ProcessId == info.ProcessId &&
+                    StringComparer.OrdinalIgnoreCase.Equals(pair.Value.ApplicationId, info.ApplicationId) &&
+                    StringComparer.OrdinalIgnoreCase.Equals(pair.Value.ExecutablePath, info.ExecutablePath))
+                .Select(pair => pair.Key)
+                .FirstOrDefault() ?? $"window-{Guid.NewGuid():N}";
             newCapturedWindows.Add(id, new CapturedWindow(handle, info.ProcessId, info.ApplicationId, info.ExecutablePath));
             windows.Add(new WindowSnapshot(id,
                 new ApplicationIdentity(info.ApplicationId, info.ExecutablePath), info.Role,
@@ -112,12 +118,6 @@ public sealed class WindowsWindowSystem : IWindowSystem
             }
 
             NativeMonitorInfo[] validMonitors = GetValidMonitors();
-            if (item.TargetBounds is not null && validMonitors.Length != 1)
-            {
-                outcomes.Add(Outcome(item, WindowOutcomeCode.Unsupported,
-                    "Bounds apply currently requires exactly one valid attached monitor; capture remains available."));
-                continue;
-            }
 
             NativeResult<NativeWindowInfo> beforeResult = native.ObserveWindow(captured.Handle);
             if (!beforeResult.IsSuccess || beforeResult.Value is not { } before)
@@ -133,7 +133,9 @@ public sealed class WindowsWindowSystem : IWindowSystem
                     "The native handle no longer belongs to the application captured for this session."));
                 continue;
             }
-            NativeMonitorInfo? monitor = validMonitors.FirstOrDefault(candidate => candidate.Id == before.MonitorId);
+            NativeMonitorInfo? monitor = item.TargetBounds is { } targetBounds
+                ? SelectTargetMonitor(validMonitors, targetBounds)
+                : validMonitors.FirstOrDefault(candidate => candidate.Id == before.MonitorId);
             if (monitor is null || monitor.Dpi is 0)
             {
                 outcomes.Add(Outcome(item, WindowOutcomeCode.Unsupported, "The window monitor or its DPI is unavailable."));
@@ -254,7 +256,7 @@ public sealed class WindowsWindowSystem : IWindowSystem
         cancellationToken.ThrowIfCancellationRequested();
         return Task.FromResult(native.IsSupported
             ? new WindowSystemCapabilities(true, true, true, false,
-                "Bounds apply is limited to sessions with exactly one valid attached monitor; state-only apply and capture support multiple monitors.")
+                "Capture, state changes, and topology-planned bounds apply support valid attached monitors; application launch is not implemented.")
             : new WindowSystemCapabilities(false, false, false, false, "Win32 is available only on Windows."));
     }
 
@@ -303,6 +305,29 @@ public sealed class WindowsWindowSystem : IWindowSystem
         return result.IsSuccess && result.Value is not null
             ? result.Value.Where(IsValidMonitor).GroupBy(monitor => monitor.Id).Select(group => group.First()).ToArray()
             : [];
+    }
+
+    private static NativeMonitorInfo? SelectTargetMonitor(NativeMonitorInfo[] monitors, DesktopRect target)
+    {
+        double centerX = target.X + target.Width / 2;
+        double centerY = target.Y + target.Height / 2;
+        return monitors
+            .Select(monitor => (Monitor: monitor, Logical: ToDisplay(monitor).WorkArea))
+            .OrderBy(candidate => Contains(candidate.Logical, centerX, centerY) ? 0 : 1)
+            .ThenBy(candidate => DistanceSquared(candidate.Logical, centerX, centerY))
+            .ThenBy(candidate => candidate.Monitor.Id)
+            .Select(candidate => candidate.Monitor)
+            .FirstOrDefault();
+    }
+
+    private static bool Contains(DesktopRect rectangle, double x, double y) =>
+        x >= rectangle.X && x < rectangle.X + rectangle.Width && y >= rectangle.Y && y < rectangle.Y + rectangle.Height;
+
+    private static double DistanceSquared(DesktopRect rectangle, double x, double y)
+    {
+        double nearestX = Math.Clamp(x, rectangle.X, rectangle.X + rectangle.Width);
+        double nearestY = Math.Clamp(y, rectangle.Y, rectangle.Y + rectangle.Height);
+        return Math.Pow(x - nearestX, 2) + Math.Pow(y - nearestY, 2);
     }
 
     private static NativeWindowState ToNativeState(WindowState state) => state switch
