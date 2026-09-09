@@ -39,7 +39,26 @@ public static class ProfileValidator
             throw new ProfileFormatException("Every window requires ids and valid positive bounds.");
         if (profile.Windows.Select(window => window.WindowId).Distinct(StringComparer.Ordinal).Count() != profile.Windows.Length)
             throw new ProfileFormatException("Window ids must be unique.");
+        if (profile.Privacy.RedactionPatterns.Length > MaxRedactionPatterns)
+            throw new ProfileFormatException($"At most {MaxRedactionPatterns} redaction patterns are allowed.");
+        foreach (string pattern in profile.Privacy.RedactionPatterns)
+        {
+            if (string.IsNullOrWhiteSpace(pattern) || pattern.Length > MaxRedactionPatternLength || pattern.Any(character => character < ' '))
+                throw new ProfileFormatException("Redaction patterns must be short printable strings.");
+            try
+            {
+                _ = new System.Text.RegularExpressions.Regex(pattern, System.Text.RegularExpressions.RegexOptions.None, RedactionTimeout);
+            }
+            catch (ArgumentException exception)
+            {
+                throw new ProfileFormatException($"Redaction pattern '{pattern}' is not a valid regular expression.", exception);
+            }
+        }
     }
+
+    private const int MaxRedactionPatterns = 32;
+    private const int MaxRedactionPatternLength = 512;
+    internal static readonly TimeSpan RedactionTimeout = TimeSpan.FromMilliseconds(250);
 
     private static bool ValidRect(DesktopRect rectangle) =>
         double.IsFinite(rectangle.X) && double.IsFinite(rectangle.Y) && double.IsFinite(rectangle.Width) && double.IsFinite(rectangle.Height) && rectangle.Width > 0 && rectangle.Height > 0;
@@ -59,9 +78,22 @@ public static class ProfileJsonSerializer
     public static string Serialize(LayoutProfile profile)
     {
         ProfileValidator.Validate(profile);
-        LayoutProfile safeProfile = profile.Privacy.PersistWindowTitles
-            ? profile
-            : profile with { Windows = profile.Windows.Select(window => window with { Title = null }).ToImmutableArray() };
+        LayoutProfile safeProfile;
+        if (!profile.Privacy.PersistWindowTitles)
+        {
+            safeProfile = profile with { Windows = profile.Windows.Select(window => window with { Title = null }).ToImmutableArray() };
+        }
+        else if (profile.Privacy.RedactionPatterns.Length > 0)
+        {
+            safeProfile = profile with
+            {
+                Windows = profile.Windows.Select(window => window with { Title = TitleRedactor.Redact(window.Title, profile.Privacy.RedactionPatterns) }).ToImmutableArray(),
+            };
+        }
+        else
+        {
+            safeProfile = profile;
+        }
         return JsonSerializer.Serialize(safeProfile, Options) + Environment.NewLine;
     }
 

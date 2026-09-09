@@ -47,8 +47,21 @@ public sealed record WindowSnapshot(
     string? DisplayId,
     LaunchPolicy LaunchPolicy = LaunchPolicy.Never);
 
-/// <summary>Privacy choices embedded in a profile.</summary>
-public sealed record ProfilePrivacy(bool PersistWindowTitles = false);
+/// <summary>Privacy choices embedded in a profile. Titles are opt-in and, when persisted, are passed
+/// through every stored regex redaction pattern before serialization. Patterns are additive optional
+/// schema-v1 data; absent means no patterns.</summary>
+public sealed record ProfilePrivacy(
+    [property: JsonRequired] bool PersistWindowTitles = false)
+{
+    private ImmutableArray<string> redactionPatterns = ImmutableArray<string>.Empty;
+
+    /// <summary>Regex patterns whose matches are replaced with a redaction marker in persisted titles.</summary>
+    public ImmutableArray<string> RedactionPatterns
+    {
+        get => redactionPatterns;
+        init => redactionPatterns = value.IsDefault ? ImmutableArray<string>.Empty : value;
+    }
+}
 
 /// <summary>A portable, versioned description of a desired desktop layout.</summary>
 public sealed record LayoutProfile(

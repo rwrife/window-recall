@@ -6,6 +6,8 @@ Required root fields are `schemaVersion`, `name`, `capturedAtUtc`, `displays`, `
 
 Each window contains an application identity, normal bounds, state, optional role/display hints, and a launch policy. Launch defaults to `never`; executable paths are identities only and are not shell command strings. Raw `title` values are removed during serialization unless `privacy.persistWindowTitles` is explicitly `true`.
 
+`privacy` may additionally carry `redactionPatterns`: up to 32 short, valid regular expressions. When titles are persisted, every pattern's match is replaced with `[redacted]` before the file is written; a pattern that exceeds its match timeout replaces the whole title. The field is optional in schema v1, defaults to an empty list, and readers must ignore unknown future fields by failing closed rather than rewriting the source file.
+
 Example:
 
 ```json
