@@ -4,6 +4,18 @@
     "net8.0": {
       "windowrecall.core": {
         "type": "Project"
+      },
+      "windowrecall.platform.macos": {
+        "type": "Project",
+        "dependencies": {
+          "WindowRecall.Core": "[1.0.0, )"
+        }
+      },
+      "windowrecall.platform.windows": {
+        "type": "Project",
+        "dependencies": {
+          "WindowRecall.Core": "[1.0.0, )"
+        }
       }
     }
   }

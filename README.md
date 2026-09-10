@@ -2,7 +2,7 @@
 
 **Window Recall is a local-first desktop utility for Windows 10/11 and macOS that saves named window layouts and restores apps after monitor, dock, or workspace changes.**
 
-> Status: deterministic matching, display-topology mapping, safe immutable previews, selective coordination, and one-step best-effort undo are implemented in Core. Windows and macOS adapter vertical slices have deterministic fake-native coverage and opt-in live fixture harnesses; Windows consumes topology-planned multi-monitor bounds, while macOS remains read-only without Accessibility permission and re-observes authorized AX mutations. Live Windows and macOS evidence has not yet been recorded, and packaging remains future work.
+> Status: deterministic matching, display-topology mapping, safe immutable previews, selective coordination, and one-step best-effort undo are implemented in Core. A headless CLI (capture, profiles, plan, apply, undo, export, import, doctor) with documented exit codes, stable `--json` output, conflict-safe import/export, persisted undo receipts, and privacy controls is implemented and tested against an injected fake desktop on Linux, Windows, and macOS runners. Windows and macOS adapter vertical slices have deterministic fake-native coverage and opt-in live fixture harnesses; Windows consumes topology-planned multi-monitor bounds and state changes, while macOS remains read-only without Accessibility permission and re-observes authorized AX mutations. Live Windows and macOS evidence has not yet been recorded, and packaging remains future work.
 
 ## Overview
 
@@ -118,7 +118,7 @@ dotnet build --configuration Release
 dotnet test --configuration Release
 ```
 
-Run the development shell with `dotnet run --project src/WindowRecall.App` or the CLI foundation with `dotnet run --project src/WindowRecall.Cli`. Profiles use the documented [schema v1](docs/profile-schema.md), remain local JSON, and omit raw window titles unless explicitly opted in.
+Run the development shell with `dotnet run --project src/WindowRecall.App` or the headless CLI with `dotnet run --project src/WindowRecall.Cli -- doctor`. Profiles use the documented [schema v1](docs/profile-schema.md), remain local JSON, and omit raw window titles unless explicitly opted in; see [Privacy](docs/privacy.md) for exactly what is stored where and [CLI contract](docs/cli.md) for commands, exit codes, and `--json` output.
 
 Platform adapter tests use injected fake native APIs and are not proof that real windows were observed or moved. See [Windows adapter verification](docs/windows-adapter-verification.md) and [macOS adapter verification](docs/macos-adapter-verification.md) for filtering rules, permission behavior, live harness instructions, and clearly separated mock/build/live evidence.
 
