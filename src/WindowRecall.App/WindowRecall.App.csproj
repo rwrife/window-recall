@@ -10,5 +10,10 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../WindowRecall.Core/WindowRecall.Core.csproj" />
+    <ProjectReference Include="../WindowRecall.Cli/WindowRecall.Cli.csproj" />
+    <ProjectReference Include="../WindowRecall.Platform.MacOS/WindowRecall.Platform.MacOS.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="WindowRecall.App.Tests" />
   </ItemGroup>
 </Project>

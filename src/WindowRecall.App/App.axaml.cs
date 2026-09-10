@@ -12,7 +12,9 @@ public sealed partial class App : Application
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
-            desktop.MainWindow = new MainWindow();
+            MainWindowViewModel viewModel = DesktopViewModelFactory.Create();
+            desktop.MainWindow = new MainWindow(viewModel);
+            _ = viewModel.InitializeAsync();
         }
 
         base.OnFrameworkInitializationCompleted();
