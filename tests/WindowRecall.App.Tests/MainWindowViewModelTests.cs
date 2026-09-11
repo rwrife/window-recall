@@ -26,7 +26,9 @@ public sealed class MainWindowViewModelTests
         Assert.Equal(["desk"], vm.Profiles);
         Assert.Equal(AppView.Home, vm.CurrentView);
         Assert.Equal("Local only", vm.PermissionTitle);
-        Assert.Contains("never requests Screen Recording or administrator rights", vm.PermissionDetail);
+        // Platform-appropriate reassurance; assert the shared promise, not the OS-specific wording.
+        Assert.Contains("never requests", vm.PermissionDetail, StringComparison.Ordinal);
+        Assert.Contains("administrator rights", vm.PermissionDetail, StringComparison.Ordinal);
     }
 
     [Fact]
