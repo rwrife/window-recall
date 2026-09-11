@@ -1,10 +1,337 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:app="using:WindowRecall.App"
+        xmlns:conv="using:Avalonia.Data.Converters"
         x:Class="WindowRecall.App.MainWindow"
-        Title="Window Recall" Width="720" Height="480">
-  <StackPanel Margin="32" Spacing="12">
-    <TextBlock FontSize="28" FontWeight="SemiBold">Window Recall</TextBlock>
-    <TextBlock TextWrapping="Wrap">The local profile foundation is ready. Capture and restore integration arrives in later milestones.</TextBlock>
-    <TextBlock TextWrapping="Wrap">No windows will move without a restore preview and explicit approval.</TextBlock>
-  </StackPanel>
+        x:DataType="app:MainWindowViewModel"
+        x:CompileBindings="False"
+        Title="Window Recall" Width="900" Height="640"
+        MinWidth="640" MinHeight="480"
+        WindowStartupLocation="CenterScreen">
+
+  <Window.Resources>
+    <app:InverseBooleanConverter x:Key="InverseBool"/>
+    <app:LaunchPolicyToBoolConverter x:Key="LaunchPolicyBool"/>
+    <app:NonEmptyCollectionToBoolConverter x:Key="NonEmptyToBool"/>
+    <app:IsNullToBoolConverter x:Key="IsNullToBool"/>
+  </Window.Resources>
+
+  <Grid RowDefinitions="Auto,Auto,Auto,*,Auto">
+
+    <!-- Navigation bar: every view state stays one Tab stop away; nothing traps the user. -->
+    <Border Grid.Row="0" Name="NavBar" Padding="12,8"
+            AutomationProperties.Name="Main navigation">
+      <StackPanel Orientation="Horizontal" Spacing="8">
+        <Button Name="HomeButton" Content="_Profiles" Command="{Binding NavigateHomeCommand}"
+                AutomationProperties.Name="Go to profiles home"
+                ToolTip.Tip="Return to the profile list (keyboard accessible from anywhere)"/>
+        <Button Name="CaptureButton" Content="_Capture desktop" Command="{Binding StartCaptureCommand}"
+                AutomationProperties.Name="Capture current desktop"
+                ToolTip.Tip="Observe the current windows and displays"/>
+        <Button Name="RestoreButton" Content="_Restore…" Command="{Binding PreviewSelectedProfileCommand}"
+                AutomationProperties.Name="Preview restore for selected profile"
+                ToolTip.Tip="Build a safe preview; nothing moves yet"/>
+        <Button Name="RefreshButton" Content="_Refresh list" Command="{Binding RefreshProfilesCommand}"
+                AutomationProperties.Name="Refresh the profile list"
+                ToolTip.Tip="Reload profile names from local storage"/>
+      </StackPanel>
+    </Border>
+
+    <!-- Permission banner: always visible when relevant, never blocks navigation. -->
+    <Border Grid.Row="1" Name="PermissionBannerPanel" Padding="12,6"
+            IsVisible="{Binding PermissionTitle, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+            AutomationProperties.Name="Permission status">
+      <StackPanel Spacing="4">
+        <TextBlock Name="PermissionTitleText" Text="{Binding PermissionTitle}" FontWeight="SemiBold"/>
+        <TextBlock Name="PermissionDetailText" Text="{Binding PermissionDetail}" TextWrapping="Wrap"/>
+        <Button Name="OpenPermissionSettingsButton" Content="Open system _settings"
+                Command="{Binding OpenPermissionSettingsCommand}"
+                IsVisible="{Binding PermissionCanOpenSettings}"
+                AutomationProperties.Name="Open system privacy settings"/>
+      </StackPanel>
+    </Border>
+
+    <!-- Progress + cancel while applying. -->
+    <Border Grid.Row="2" Name="ProgressPanel" Padding="12,4"
+            IsVisible="{Binding Progress.IsVisible}"
+            AutomationProperties.Name="Operation progress">
+      <StackPanel Orientation="Horizontal" Spacing="8">
+        <ProgressBar Name="ProgressBar" MinWidth="240" Height="16"
+                     IsIndeterminate="{Binding Progress.Maximum, Converter={StaticResource IsNullToBool}}"
+                     Maximum="{Binding Progress.Maximum}"
+                     Value="{Binding Progress.Value}"
+                     AutomationProperties.Name="Restore progress"/>
+        <TextBlock Name="ProgressLabel" Text="{Binding Progress.Label}" VerticalAlignment="Center"/>
+        <Button Name="CancelButton" Content="_Cancel" Command="{Binding CancelApplyCommand}"
+                AutomationProperties.Name="Cancel restore before the next window"
+                ToolTip.Tip="Windows already moved stay put; the rest report as cancelled"/>
+      </StackPanel>
+    </Border>
+
+    <!-- Main content: one panel per view state. -->
+    <Grid Grid.Row="3" Margin="12">
+
+      <!-- HOME: profiles -->
+      <Grid Name="HomePanel" ColumnDefinitions="320,*" RowSpacing="12" ColumnSpacing="12"
+            IsVisible="{Binding IsHomeView}">
+        <StackPanel Spacing="8">
+          <TextBlock Text="Saved profiles" FontSize="18" AutomationProperties.HeadingLevel="1"/>
+          <ListBox Name="ProfileList" ItemsSource="{Binding Profiles}"
+                   SelectedItem="{Binding SelectedProfileId, Mode=TwoWay}"
+                   Height="260" SelectionMode="Single"
+                   AutomationProperties.Name="Saved profiles"/>
+          <TextBlock Name="SelectedProfileName" Text="{Binding SelectedProfileId}"
+                     AutomationProperties.Name="Selected profile"/>
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <Button Name="EditProfileButton" Content="_Edit" Command="{Binding EditSelectedProfileCommand}"
+                    AutomationProperties.Name="Edit selected profile"/>
+            <Button Name="DeleteProfileButton" Content="_Delete…" Command="{Binding RequestDeleteCommand}"
+                    AutomationProperties.Name="Delete selected profile, asks for confirmation"/>
+          </StackPanel>
+        </StackPanel>
+        <StackPanel Grid.Column="1" Spacing="8">
+          <TextBlock Text="Current displays" FontSize="18" AutomationProperties.HeadingLevel="1"/>
+          <TextBlock Name="TopologySummaryText" Text="{Binding TopologySummary}" TextWrapping="Wrap"/>
+          <ItemsControl Name="TopologyList" ItemsSource="{Binding TopologyRows}"
+                        AutomationProperties.Name="Attached displays">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="app:CurrentTopologyRow">
+                <TextBlock Text="{Binding Label}" AutomationProperties.Name="{Binding Label}"/>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+          <TextBlock TextWrapping="Wrap" Text="Window Recall is local-only: profiles are plain JSON under your user data folder, raw window titles are stored only when you opt in, and no window ever moves without a preview you approve."/>
+        </StackPanel>
+      </Grid>
+
+      <!-- CAPTURE REVIEW -->
+      <Grid Name="CapturePanel" RowDefinitions="Auto,Auto,*,Auto" RowSpacing="8" ColumnSpacing="8"
+            IsVisible="{Binding IsCaptureView}">
+        <TextBlock Text="Review captured windows" FontSize="18" AutomationProperties.HeadingLevel="1"/>
+        <TextBlock Grid.Row="1" TextWrapping="Wrap"
+                   Text="Uncheck any window to exclude it from the profile. Launch policy allows a missing app to be relaunched after explicit approval."/>
+        <ScrollViewer Grid.Row="2">
+          <ItemsControl Name="CaptureList" ItemsSource="{Binding CaptureWindows}"
+                        AutomationProperties.Name="Captured windows">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="app:WindowToggleItem">
+                <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,2">
+                  <CheckBox Content="{Binding DisplayLabel}"
+                            IsChecked="{Binding IsExcluded, Converter={StaticResource InverseBool}}"
+                            AutomationProperties.Name="{Binding ApplicationId}"/>
+                  <TextBlock Text="{Binding ApplicationId}" VerticalAlignment="Center"
+                             ToolTip.Tip="{Binding Title}"/>
+                  <CheckBox Content="Allow launch"
+                            IsChecked="{Binding LaunchPolicy, Converter={StaticResource LaunchPolicyBool}}"/>
+                </StackPanel>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </ScrollViewer>
+        <Grid Grid.Row="3" RowDefinitions="Auto,Auto,Auto" ColumnDefinitions="200,*" RowSpacing="8" ColumnSpacing="8">
+          <TextBlock Text="Profile name" VerticalAlignment="Center" AutomationProperties.Name="Profile name label"/>
+          <TextBox Grid.Column="1" Name="ProfileNameBox" Text="{Binding ProfileName}"
+                   Watermark="e.g. Desk setup"
+                   AutomationProperties.Name="Profile name"
+                   AutomationProperties.HelpText="A readable name for this layout"/>
+          <CheckBox Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2"
+                    Name="PersistTitlesCheck" Content="Store window titles in this profile (opt-in)"
+                    IsChecked="{Binding PersistWindowTitles}"
+                    AutomationProperties.Name="Store window titles in this profile"
+                    ToolTip.Tip="Off by default. When on, titles are redacted through your patterns before saving."/>
+          <TextBox Grid.Row="2" Grid.Column="1" Name="RedactionPatternsBox"
+                   Text="{Binding RedactionPatternsText}" AcceptsReturn="True" Height="56"
+                   Watermark="One regex redaction pattern per line (optional)"
+                   AutomationProperties.Name="Redaction patterns"
+                   AutomationProperties.HelpText="Regular expressions; matches are replaced with [redacted] in stored titles"/>
+          <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Top">
+            <TextBlock Text="Patterns" VerticalAlignment="Top"/>
+            <Button Name="SaveProfileButton" Content="_Save profile" Command="{Binding SaveCapturedProfileCommand}"
+                    AutomationProperties.Name="Save profile"/>
+          </StackPanel>
+        </Grid>
+      </Grid>
+
+      <!-- PROFILE EDITOR -->
+      <Grid Name="EditorPanel" RowDefinitions="Auto,Auto,*,Auto" RowSpacing="8" ColumnSpacing="8"
+            IsVisible="{Binding IsEditorView}">
+        <TextBlock FontSize="18" AutomationProperties.HeadingLevel="1"
+                   Text="Edit profile (key, privacy, launch policy)"
+                   ToolTip.Tip="Profile identity stays fixed; the JSON file name never changes on rename"/>
+        <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="8">
+          <TextBlock VerticalAlignment="Center" Text="File name (unchanged): "/>
+          <TextBlock Name="EditorKeyText" Text="{Binding EditorProfileKey}" VerticalAlignment="Center"
+                     AutomationProperties.Name="Profile file name"/>
+          <TextBlock VerticalAlignment="Center" Text=" Display name: "/>
+          <TextBox Name="EditorNameBox" Text="{Binding EditorProfileDisplayName}" Width="240"
+                   AutomationProperties.Name="Profile display name"/>
+        </StackPanel>
+        <ScrollViewer Grid.Row="2">
+          <StackPanel Spacing="8">
+            <ItemsControl Name="EditorList" ItemsSource="{Binding EditorWindows}"
+                          AutomationProperties.Name="Profile windows">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="app:WindowToggleItem">
+                  <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,2">
+                    <CheckBox Content="{Binding DisplayLabel}"
+                              IsChecked="{Binding IsExcluded, Converter={StaticResource InverseBool}}"
+                              AutomationProperties.Name="{Binding ApplicationId}"/>
+                    <TextBlock Text="{Binding ApplicationId}" VerticalAlignment="Center"
+                               ToolTip.Tip="{Binding Title}"/>
+                    <CheckBox Content="Allow launch"
+                              IsChecked="{Binding LaunchPolicy, Converter={StaticResource LaunchPolicyBool}}"/>
+                  </StackPanel>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <CheckBox Name="EditorPersistTitlesCheck" Content="Store window titles (opt-in)"
+                      IsChecked="{Binding EditorPersistWindowTitles}"
+                      AutomationProperties.Name="Store window titles in this profile"/>
+            <TextBox Name="EditorRedactionBox" Text="{Binding EditorRedactionPatternsText}"
+                     AcceptsReturn="True" Height="56"
+                     Watermark="One regex redaction pattern per line (optional)"
+                     AutomationProperties.Name="Redaction patterns"/>
+          </StackPanel>
+        </ScrollViewer>
+        <StackPanel Grid.Row="3" Orientation="Horizontal" Spacing="8">
+          <Button Name="SaveEditorButton" Content="_Save changes" Command="{Binding SaveEditorCommand}"
+                  AutomationProperties.Name="Save profile changes"/>
+          <Button Name="EditorHomeButton" Content="Back to profiles" Command="{Binding NavigateHomeCommand}"
+                  AutomationProperties.Name="Discard edits and go home"/>
+        </StackPanel>
+      </Grid>
+
+      <!-- RESTORE PREVIEW -->
+      <Grid Name="PreviewPanel" RowDefinitions="Auto,Auto,*,Auto" RowSpacing="8" ColumnSpacing="8"
+            IsVisible="{Binding IsPreviewView}">
+        <TextBlock Text="Restore preview — nothing has moved yet" FontSize="18"
+                   AutomationProperties.HeadingLevel="1"/>
+        <TextBlock Grid.Row="1" Name="PreviewSummaryText" Text="{Binding PreviewSummary}"
+                   TextWrapping="Wrap" AutomationProperties.Name="Preview summary"/>
+        <ScrollViewer Grid.Row="2">
+          <ItemsControl Name="PreviewList" ItemsSource="{Binding PreviewRows}"
+                        AutomationProperties.Name="Planned window operations">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="app:PreviewItemRow">
+                <StackPanel Margin="0,3" Spacing="2">
+                  <StackPanel Orientation="Horizontal" Spacing="8">
+                    <CheckBox Name="RowSelect"
+                              IsChecked="{Binding IsSelected}"
+                              IsEnabled="{Binding CanSelect}"
+                              Content="{Binding StatusGlyph}"
+                              AutomationProperties.Name="{Binding StateAnnouncement}"/>
+                    <TextBlock Text="{Binding ApplicationLabel}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                    <TextBlock Text="{Binding ActionLabel}" VerticalAlignment="Center"/>
+                  </StackPanel>
+                  <StackPanel Orientation="Horizontal" Spacing="12" Margin="28,0,0,0">
+                    <TextBlock Text="{Binding SourceDisplay}" ToolTip.Tip="Source display"/>
+                    <TextBlock Text="→"/>
+                    <TextBlock Text="{Binding DestinationDisplay}" ToolTip.Tip="Destination display"/>
+                    <TextBlock Text="{Binding TargetBoundsSummary}" ToolTip.Tip="Target bounds on destination"/>
+                  </StackPanel>
+                  <TextBlock Margin="28,0,0,0" Text="{Binding Reason}" TextWrapping="Wrap" FontSize="12"
+                             AutomationProperties.Name="{Binding Reason}"/>
+                  <ComboBox Margin="28,0,0,0" Width="420" HorizontalAlignment="Left"
+                            ItemsSource="{Binding CandidateOptions}"
+                            SelectedItem="{Binding ResolvedOption, Mode=TwoWay}"
+                            IsVisible="{Binding CandidateOptions, Converter={StaticResource NonEmptyToBool}}"
+                            AutomationProperties.Name="Choose which running window this should match">
+                    <ComboBox.ItemTemplate>
+                      <DataTemplate x:DataType="app:AmbiguityOption">
+                        <TextBlock Text="{Binding Label}"/>
+                      </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                  </ComboBox>
+                </StackPanel>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </ScrollViewer>
+        <StackPanel Grid.Row="3" Orientation="Horizontal" Spacing="8">
+          <Button Name="ApplyButton" Content="_Apply selected…" Command="{Binding RequestApplyCommand}"
+                  AutomationProperties.Name="Apply selected operations"
+                  ToolTip.Tip="Applying more than one window asks for confirmation first"/>
+          <Button Name="PreviewHomeButton" Content="Back" Command="{Binding NavigateHomeCommand}"
+                  AutomationProperties.Name="Back to profiles without applying"/>
+        </StackPanel>
+      </Grid>
+
+      <!-- APPLY RESULT -->
+      <Grid Name="ResultPanel" RowDefinitions="Auto,Auto,*,Auto" RowSpacing="8" ColumnSpacing="8"
+            IsVisible="{Binding IsResultView}">
+        <TextBlock Text="Restore results" FontSize="18" AutomationProperties.HeadingLevel="1"/>
+        <TextBlock Grid.Row="1" Name="ResultSummaryText" Text="{Binding ResultSummary}"
+                   TextWrapping="Wrap" AutomationProperties.Name="Result summary"/>
+        <ScrollViewer Grid.Row="2">
+          <ItemsControl Name="ResultList" ItemsSource="{Binding ResultRows}"
+                        AutomationProperties.Name="Per-window outcomes">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="app:OutcomeRow">
+                <TextBlock Text="{Binding Display}" TextWrapping="Wrap" Margin="0,2"
+                           AutomationProperties.Name="{Binding Display}"/>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </ScrollViewer>
+        <StackPanel Grid.Row="3" Orientation="Horizontal" Spacing="8">
+          <Button Name="UndoButton" Content="_Undo last restore" Command="{Binding UndoCommand}"
+                  IsVisible="{Binding IsUndoVisible}"
+                  AutomationProperties.Name="Undo the last restore best-effort"
+                  ToolTip.Tip="Returns windows to their immediately pre-apply positions"/>
+          <Button Name="ResultHomeButton" Content="Back to profiles" Command="{Binding NavigateHomeCommand}"
+                  AutomationProperties.Name="Back to profiles"/>
+        </StackPanel>
+      </Grid>
+
+      <!-- PERMISSION NOTICE (never traps: Back to profiles always available) -->
+      <StackPanel Name="PermissionPanel" Spacing="12" IsVisible="{Binding IsPermissionView}">
+        <TextBlock FontSize="18" FontWeight="SemiBold" Text="{Binding PermissionTitle}"
+                   AutomationProperties.Name="Permission notice"/>
+        <TextBlock Text="{Binding PermissionDetail}" TextWrapping="Wrap"/>
+        <TextBlock TextWrapping="Wrap"
+                   Text="Window Recall stays read-only or unavailable without the permission described above. It never asks for Screen Recording or administrator rights."/>
+        <StackPanel Orientation="Horizontal" Spacing="8">
+          <Button Name="NoticeSettingsButton" Content="Open system _settings"
+                  Command="{Binding OpenPermissionSettingsCommand}"
+                  IsVisible="{Binding PermissionCanOpenSettings}"/>
+          <Button Name="NoticeDismissButton" Content="Back to profiles"
+                  Command="{Binding NavigateHomeCommand}"
+                  AutomationProperties.Name="Return to profiles"/>
+        </StackPanel>
+      </StackPanel>
+    </Grid>
+
+    <!-- Status strip: assertive live region so screen readers announce every state change. -->
+    <Border Grid.Row="4" Name="StatusPanel" Padding="12,8"
+            AutomationProperties.Name="Status">
+      <StackPanel Spacing="4">
+        <TextBlock Name="StatusMessageText" Text="{Binding StatusMessage}" TextWrapping="Wrap"
+                   AutomationProperties.LiveSetting="Assertive"
+                   AutomationProperties.Name="Status message"/>
+        <TextBlock Name="ErrorText" Text="{Binding ErrorMessage}" TextWrapping="Wrap"
+                   IsVisible="{Binding ErrorMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                   Foreground="#C0392B"
+                   AutomationProperties.Name="Error message"/>
+      </StackPanel>
+    </Border>
+
+    <!-- Confirmation overlay for multi-window apply and destructive delete. -->
+    <Border Grid.Row="0" Grid.RowSpan="5" Name="ConfirmationOverlay"
+            Background="#80000000" IsVisible="{Binding IsConfirmationVisible}"
+            AutomationProperties.Name="Confirmation dialog">
+      <Border Background="#FFF7F7F7" MaxWidth="480"
+              Padding="24" CornerRadius="8" VerticalAlignment="Center">
+        <StackPanel Spacing="12">
+          <TextBlock Name="ConfirmationTextText" Text="{Binding ConfirmationText}" TextWrapping="Wrap"
+                     FontSize="16" AutomationProperties.Name="Confirmation question"/>
+          <StackPanel Orientation="Horizontal" Spacing="12" HorizontalAlignment="Right">
+            <Button Name="ConfirmButton" Content="_Confirm" Command="{Binding ConfirmCommand}"
+                    AutomationProperties.Name="Confirm"/>
+            <Button Name="DeclineButton" Content="_Cancel" Command="{Binding DeclineCommand}"
+                    AutomationProperties.Name="Cancel, nothing changes"/>
+          </StackPanel>
+        </StackPanel>
+      </Border>
+    </Border>
+  </Grid>
 </Window>
