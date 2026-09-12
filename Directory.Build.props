@@ -9,5 +9,8 @@
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>$(NoWarn);CS1591</NoWarn>
+    <!-- Single source of truth for the product version; packaging and the CLI
+         version banner read it through an assembly-attribute token. -->
+    <VersionPrefix>0.1.0</VersionPrefix>
   </PropertyGroup>
 </Project>

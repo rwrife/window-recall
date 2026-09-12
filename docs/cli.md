@@ -11,8 +11,8 @@ variable, then the per-OS default:
 
 - Windows: `%LOCALAPPDATA%\window-recall`
 - Linux (verified): `$XDG_STATE_HOME/window-recall` falling back to `~/.local/share/window-recall`
-- macOS: the per-user local application-data directory resolved by .NET on macOS
-  (`Environment.SpecialFolder.LocalApplicationData`); exact location to be confirmed during macOS packaging
+- macOS: the same XDG local-state default resolved by .NET on macOS; confirm interactively on a Mac
+  during the manual release gate (`window-recall doctor --json` prints the active `dataRoot`)
 
 Layout: `profiles/<profile-id>.json` for profiles and `undo/latest-undo.json` for the single persisted
 undo receipt (archived to `undo/consumed-<receipt-id>.json` when consumed). The data root is a plain

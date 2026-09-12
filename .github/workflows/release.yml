@@ -1,0 +1,87 @@
+name: Release packages
+
+# Builds reproducible release-candidate artifacts for every tag push and for
+# manual dispatch. Signing/notarization steps are clearly optional: they run
+# only when their secrets exist, and the artifact manifest always discloses
+# whether signing actually happened.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: 1
+
+jobs:
+  package:
+    name: Package ${{ matrix.label }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            rid: win-x64
+            label: windows
+          - os: macos-latest
+            rid: osx-arm64
+            label: macos
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - run: dotnet restore --locked-mode
+      - run: dotnet format --verify-no-changes --no-restore
+      - run: dotnet build --configuration Release --no-restore
+      - run: dotnet test --configuration Release --no-build
+      - name: Publish portable ZIP for this RID
+        shell: pwsh
+        run: |
+          dotnet publish src/WindowRecall.Cli -c Release -r ${{ matrix.rid }} --self-contained false -o publish/cli
+          dotnet publish src/WindowRecall.App -c Release -r ${{ matrix.rid }} --self-contained false -o publish/app
+          Copy-Item LICENSE,README.md publish/cli/
+          Copy-Item LICENSE,README.md publish/app/
+          Copy-Item docs/third-party-notices.md publish/cli/THIRD-PARTY-NOTICES.md
+          Copy-Item docs/third-party-notices.md publish/app/THIRD-PARTY-NOTICES.md
+      - name: Archive and hash
+        shell: bash
+        run: |
+          mkdir -p artifacts
+          (cd publish/cli && zip -X -qr ../../artifacts/WindowRecall-Cli-${GITHUB_REF_NAME:-dev}-${{ matrix.rid }}.zip .)
+          (cd publish/app && zip -X -qr ../../artifacts/WindowRecall-App-${GITHUB_REF_NAME:-dev}-${{ matrix.rid }}.zip .)
+          (cd artifacts && sha256sum ./*.zip > SHA256SUMS)
+      # Signing/notarization are intentionally absent until certificates and upgrade
+      # behavior are validated; scripts/package.sh carries the optional codesign hook
+      # and every artifact label says "unsigned release candidate". See
+      # docs/release-checklist.md.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: packages-${{ matrix.label }}
+          path: artifacts/
+
+  release:
+    name: GitHub release (tags only)
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: packages
+      - name: Collect and publish
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p upload
+          find packages -type f \( -name '*.zip' -o -name 'SHA256SUMS' \) -exec cp {} upload/ \;
+          (cd upload && sha256sum ./*.zip > SHA256SUMS)
+          gh release create "$GITHUB_REF_NAME" upload/* \
+            --draft \
+            --title "Window Recall $GITHUB_REF_NAME (unsigned release candidate)" \
+            --notes-file docs/release-notes-template.md
