@@ -35,6 +35,19 @@ public sealed class CliRunnerTests : IDisposable
     }
 
     [Fact]
+    public async Task VersionCommand_ReportsAssemblyProductVersion()
+    {
+        StringWriter stdout = new();
+        CliRunner runner = new(stdout, new StringWriter(), () => new UnsupportedDesktopAdapter());
+
+        int exit = await runner.RunAsync(["--version"]);
+
+        Assert.Equal(CliRunner.ExitSuccess, exit);
+        Assert.Equal($"window-recall cli {CliRunner.ProductVersion}{Environment.NewLine}", stdout.ToString());
+        Assert.Matches(@"^\d+\.\d+\.\d+$", CliRunner.ProductVersion);
+    }
+
+    [Fact]
     public async Task ProfilesList_EmptyStorage_IsSuccess()
     {
         (int exit, string stdout, _) = await RunAsync("profiles", "list", "--json");

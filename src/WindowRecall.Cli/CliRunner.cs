@@ -101,6 +101,11 @@ public sealed class CliRunner
     public const string StatusPartial = "partial";
     public const string StatusConflict = "conflict";
 
+    /// <summary>Release version reported by <c>--version</c>, sourced from the CLI assembly so the
+    /// build, packaging manifest, and runtime banner cannot disagree.</summary>
+    public static string ProductVersion { get; } =
+        typeof(CliRunner).Assembly.GetName().Version is { } version ? version.ToString(3) : "0.0.0-dev";
+
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -152,7 +157,7 @@ public sealed class CliRunner
         string command = args[0];
         if (command is "--version" or "-v" or "version")
         {
-            stdout.WriteLine("window-recall cli 0.1.0");
+            stdout.WriteLine($"window-recall cli {ProductVersion}");
             return ExitSuccess;
         }
 
